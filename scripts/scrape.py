@@ -40,9 +40,15 @@ DESCRIPTION_DELAY_S = 0.5     # pause between description requests
 ALLOWED_FETCH_HOSTS = {"widgets.mindbodyonline.com"}
 SCHEDULE_URL = "https://www.modernsailing.com/schedule"
 USER_AGENT = (
-    "modern-sailing-schedule/1.0 (personal club-member project; "
+    "Mozilla/5.0 (compatible; modern-sailing-schedule/1.0; personal club-member project; "
     "fetches one public page a few times a day)"
 )
+# The widget is meant to be loaded from the club's own page, so send that page as the referrer.
+FETCH_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Referer": "https://www.modernsailing.com/schedule",
+    "Accept": "*/*",
+}
 MIN_EVENTS = 20          # refuse to publish if the parse looks broken
 MAX_SKIPPED_RATIO = 0.10  # refuse to publish if too many rows fail to parse
 
@@ -64,14 +70,14 @@ def fetch(url: str, attempts: int = 3) -> str:
     last: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            req = urllib.request.Request(url, headers=FETCH_HEADERS)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.read().decode("utf-8")
         except Exception as exc:  # network errors are retried, then raised
             last = exc
             if attempt < attempts:
                 time.sleep(2 * attempt)
-    raise ScrapeError(f"could not fetch widget after {attempts} attempts: {last}")
+    raise ScrapeError(f"could not fetch {url} after {attempts} attempts: {last}")
 
 
 # ------------------------------------------------------------------ JS -> HTML
