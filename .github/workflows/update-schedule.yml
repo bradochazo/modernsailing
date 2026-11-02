@@ -1,0 +1,62 @@
+name: Update schedule site
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"   # every 4 hours, off the top of the hour
+  workflow_dispatch:          # "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deployments at once; let an in-flight deploy finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run parser tests (offline)
+        run: python -m unittest discover -s tests -v
+
+      # Fails (and therefore skips the deploy, keeping the last good site live)
+      # if the widget format changes and too few events parse.
+      # Class descriptions rarely change, so they are cached between runs and each
+      # one is re-fetched at most weekly (the cache is a courtesy to the club's server).
+      - name: Restore description cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/descriptions.json
+          key: descriptions-${{ github.run_id }}
+          restore-keys: descriptions-
+
+      - name: Scrape schedule
+        run: python scripts/scrape.py --out site/events.json --cache .cache/descriptions.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
